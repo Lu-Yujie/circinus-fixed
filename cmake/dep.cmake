@@ -119,11 +119,21 @@ list(APPEND EXTERNAL_LIBRARY ${PROJECT_SOURCE_DIR}/third_party/lib/libGKlib.a)
 
 
 ### parallel hashmap
-ExternalProject_Add(phmap_ep
-  CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${THIRDPARTY_DIR}"
-  GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
-  GIT_TAG 1.32
-)
+# Use an installed copy if there is one (third_party/include, CMAKE_PREFIX_PATH or the system), as for METIS and
+# GKlib above; this allows building without network access. Otherwise download version 1.32.
+find_path(phmap_INCLUDE NAMES parallel_hashmap/phmap.h HINTS "${THIRDPARTY_DIR}/include")
+if (phmap_INCLUDE)
+  message(STATUS "Found parallel-hashmap")
+  message(STATUS "  (Headers)     ${phmap_INCLUDE}")
+  list(APPEND EXTERNAL_INCLUDES ${phmap_INCLUDE})
+  add_custom_target(phmap_ep)
+else()
+  ExternalProject_Add(phmap_ep
+    CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${THIRDPARTY_DIR}"
+    GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
+    GIT_TAG 1.32
+  )
+endif()
 list(APPEND EXTERNAL_DEPENDENCY phmap_ep)
 
 ### zmq
