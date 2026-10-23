@@ -273,7 +273,9 @@ uint64_t CompressedSubgraphs::getIntersectionSize(uint32_t set_idx1, uint32_t se
                                                   const VertexRelationship* qv_equivalent_classes,
                                                   unordered_map<std::string, std::vector<VertexID>>* cache,
                                                   const unordered_set<VertexID>& except) const {
-  if (qv_equivalent_classes->isEquivalentByIndices(set_idx1, set_idx2)) {
+  if (qv_equivalent_classes->isEquivalentByIndices(set_idx1, set_idx2) && except.empty()) {
+    // The shortcut |S cap S| = |S| is only valid when no same-label key vertex has to be
+    // excluded; with a non-empty `except` fall through to the intersection, which removes them (and caches it).
     auto n = getSet(set_idx1)->size();
     DCHECK_EQ(n, getSet(set_idx2)->size()) << "set indices" << set_idx1 << ' ' << set_idx2;
     return n;
@@ -358,8 +360,10 @@ uint64_t CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraints(
     } else if (pruning_set_ptrs[idx].size() == 2 &&
                qv_equivalent_classes->isEquivalentByIndices(enumerate_orders[idx].front(),
                                                             enumerate_orders[idx].back())) {
-      auto size = pruning_set_ptrs[idx].front()->size();
-      DCHECK_EQ(size, pruning_set_ptrs[idx].back()->size());  // two sets shall be the same
+      // Exclude same-label key vertices from the twin set before n(n-1)
+      uint64_t size = existing_vertices.empty() ? pruning_set_ptrs[idx].front()->size()
+                                                : countExcept(*pruning_set_ptrs[idx].front(), existing_vertices,
+                                                              max_existing_vertices);
       group_cnt = size * (size - 1);
       if (!constraints_adjs[idx].back().empty()) {  // partial order between them
         group_cnt /= 2;
