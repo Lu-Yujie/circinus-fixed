@@ -38,7 +38,7 @@ struct ServerEvent {
   } type;
   std::vector<std::string> args;
   std::string client_addr;
-  void* data;
+  void* data = nullptr;  // was uninitialized
   QueryId query_id;
 
   static inline const std::vector<std::string> type_names = {"ShutDown", "LoadGraph",      "NewQuery",      "Explain",

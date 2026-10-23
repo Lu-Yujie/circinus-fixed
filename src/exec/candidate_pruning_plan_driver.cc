@@ -75,6 +75,7 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
     task_counters_.resize(scans.size());
     ctx.second = Result::newCandidateResult(scans.size());
     result_ = (CandidateResult*)ctx.second.get();
+    finish_event_->data = result_;  // before the first task is queued (see phase 3)
     for (uint32_t task_id = 0; task_id < scans.size(); ++task_id) {
       auto& scan = scans[task_id];
       CHECK(scan != nullptr) << task_id;
@@ -88,6 +89,10 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
     }
   } else if (plan_->getPhase() == 3) {
     LOG(INFO) << "Candidate pruning phase 3";
+    // Set the reply's data before the first filter task is queued: an executor thread can finish the task and push
+    // the event (taskFinish) before this function returns, and a reply pushed without data made the server
+    // dereference a null candidate result in handleCandidatePhase.
+    finish_event_->data = result_;
     auto filters = plan_->getFilterOperators(*query_ctx->graph_metadata, ctx.first);
     CHECK_NE(filters.size(), 0) << "The case of no candidate is not handled yet";
     task_counters_.resize(filters.size());
@@ -107,8 +112,9 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
       task_queue.putTask(new NeighborhoodFilterTask(qid, n_finished_tasks_, query_ctx->stop_time, i, filter,
                                                     query_ctx->data_graph, result_->getMergedCandidates()));
     }
+  } else {
+    finish_event_->data = result_;
   }
-  finish_event_->data = result_;
 }
 
 void CandidatePruningPlanDriver::taskFinish(std::unique_ptr<TaskBase>& task, ThreadsafeTaskQueue* task_queue,
