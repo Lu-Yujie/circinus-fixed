@@ -264,6 +264,19 @@ class CompressedSubgraphs {
                                unordered_map<std::string, std::vector<VertexID>>* cache,
                                const unordered_set<VertexID>& except) const;
 
+  /* The counting shortcuts used to take the query-vertex equivalence of two set positions as a proxy for "the
+   * two candidate sets are identical". They are not always identical: a set is built with the same-label keys and
+   * single-element sets of that moment removed (getExceptions), and a set that shrinks to one element later (e.g. via
+   * ExpandInto of a later key) is removed from sets built after it only. So the shortcuts are taken only when the two
+   * sets are equal element by element. */
+  inline bool identicalSets(uint32_t set_idx1, uint32_t set_idx2, const VertexRelationship* eq) const {
+    if (eq == nullptr || !eq->isEquivalentByIndices(set_idx1, set_idx2)) return false;
+    auto& s1 = *getSet(set_idx1);
+    auto& s2 = *getSet(set_idx2);
+    if (s1.size() != s2.size()) return false;
+    return s1.begin() == s2.begin() || std::equal(s1.begin(), s1.end(), s2.begin());
+  }
+
   uint64_t getEnumerationCount(const std::vector<uint32_t>& set_indices, const VertexRelationship* eq,
                                unordered_map<std::string, std::vector<VertexID>>& cache,
                                const unordered_set<VertexID>& except, VertexID max_except) const;

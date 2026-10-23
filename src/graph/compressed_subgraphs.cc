@@ -255,11 +255,11 @@ uint64_t CompressedSubgraphs::getEnumerationCount(const std::vector<uint32_t>& s
   }
   if (n_sets == 3) {
     if (cache.empty()) {
-      DCHECK(qv_equivalent_classes->isEquivalentByIndices(set_indices[0], set_indices[1]))
+      DCHECK(identicalSets(set_indices[0], set_indices[1], qv_equivalent_classes))
           << "set index " << set_indices[0] << " " << set_indices[1];
       cnt += 2 * intersectionCount(*getSet(set_indices[0]), *getSet(set_indices[2]));
-    } else if (qv_equivalent_classes->isEquivalentByIndices(set_indices[0], set_indices[2]) ||
-               qv_equivalent_classes->isEquivalentByIndices(set_indices[1], set_indices[2])) {
+    } else if (identicalSets(set_indices[0], set_indices[2], qv_equivalent_classes) ||
+               identicalSets(set_indices[1], set_indices[2], qv_equivalent_classes)) {
       cnt += 2 * cache.begin()->second.size();
     } else {
       SingleRangeVertexSetView view(cache.begin()->second.data(), cache.begin()->second.size());
@@ -273,7 +273,7 @@ uint64_t CompressedSubgraphs::getIntersectionSize(uint32_t set_idx1, uint32_t se
                                                   const VertexRelationship* qv_equivalent_classes,
                                                   unordered_map<std::string, std::vector<VertexID>>* cache,
                                                   const unordered_set<VertexID>& except) const {
-  if (qv_equivalent_classes->isEquivalentByIndices(set_idx1, set_idx2) && except.empty()) {
+  if (except.empty() && identicalSets(set_idx1, set_idx2, qv_equivalent_classes)) {
     // The shortcut |S cap S| = |S| is only valid when no same-label key vertex has to be
     // excluded; with a non-empty `except` fall through to the intersection, which removes them (and caches it).
     auto n = getSet(set_idx1)->size();
@@ -358,8 +358,8 @@ uint64_t CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraints(
     if (pruning_set_ptrs[idx].size() == 1) {  // existing_vertices must not be empty
       group_cnt = countExcept(*pruning_set_ptrs[idx].front(), existing_vertices, max_existing_vertices);
     } else if (pruning_set_ptrs[idx].size() == 2 &&
-               qv_equivalent_classes->isEquivalentByIndices(enumerate_orders[idx].front(),
-                                                            enumerate_orders[idx].back())) {
+               identicalSets(enumerate_orders[idx].front(), enumerate_orders[idx].back(),
+                             qv_equivalent_classes)) {
       // Exclude same-label key vertices from the twin set before n(n-1)
       uint64_t size = existing_vertices.empty() ? pruning_set_ptrs[idx].front()->size()
                                                 : countExcept(*pruning_set_ptrs[idx].front(), existing_vertices,
