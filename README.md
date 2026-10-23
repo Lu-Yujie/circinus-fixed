@@ -10,6 +10,13 @@ Circinus has the following required dependencies:
 - Gflags
 - Glog
 - [bliss-0.73](http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip)
+- GMP (exact match counts above 2^128)
+- ZeroMQ (libzmq and cppzmq)
+
+GKlib, METIS and parallel-hashmap are downloaded and built by cmake unless they are already installed in
+`third_party/` (or under a prefix in `CMAKE_PREFIX_PATH`); with all of them installed, the build needs no network access.
+
+See [FIXES.md](FIXES.md) for the fixes on top of the `artifact1` branch and how to reproduce each defect.
 
 For testing, Circinus uses [googletest](https://github.com/google/googletest/releases/tag/release-1.8.0) (needed when `cmake -DBUILD_TESTS=ON`).
 
