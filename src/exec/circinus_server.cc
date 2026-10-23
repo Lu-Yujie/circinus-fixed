@@ -172,6 +172,12 @@ void CircinusServer::handleCandidatePhase(const Event& event) {
           return;
         }
       }
+    } else if (result->getMergedCandidates(0).empty()) {
+      // online scans only the start vertex. Without candidates the count is 0; the multi-threaded plan, which splits
+      // the start vertex's candidates into chunks, failed a check in CandidateResult::getCandidates() instead.
+      LOG(INFO) << "the start vertex has no candidate; count is 0";
+      finishQueryWithZeroCount(event.query_id);
+      return;
     }
   }
   auto plan = planner->updateCandidatePruningPlan(result);
