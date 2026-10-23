@@ -223,7 +223,27 @@ class ExpandEdgeKeyToKeyOperator : public ExpandEdgeOperator {
         ctx->resetTargets();
       } else {
         filterTargets(target_view, input);
-        ctx->setTargetView(target_view);
+        // The reused set lacks only the same-label keys and single-element sets that existed when it was built. A
+        // same-label key added later (e.g. a set vertex enumerated into a key) stays in a set that is larger than the
+        // set pruning threshold, because the count excludes keys from sets. The target here is a key, which the count
+        // does not check against the other keys, so remove the current exceptions as the non-reuse path below does.
+        auto exceptions = input.getExceptions(same_label_key_indices_, same_label_set_indices_);
+        bool has_exception = false;
+        for (auto v : target_view) {
+          if (exceptions.count(v)) {
+            has_exception = true;
+            break;
+          }
+        }
+        if (!has_exception) {
+          ctx->setTargetView(target_view);
+        } else {
+          auto& targets = ctx->resetTargets();
+          for (auto v : target_view) {
+            if (exceptions.count(v) == 0) targets.push_back(v);
+          }
+          ctx->resetTargetView();
+        }
       }
     } else {
       auto& current_targets = ctx->resetTargets();
