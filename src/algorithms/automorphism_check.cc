@@ -1,6 +1,7 @@
 #include "algorithms/automorphism_check.h"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <numeric>
 #include <queue>
@@ -44,63 +45,76 @@ AutomorphismCheck::AutomorphismCheck(QueryGraph& q)
 }
 
 PartialOrder AutomorphismCheck::getPartialOrder() {
-  std::vector<std::pair<QueryVertexID, QueryVertexID>> result;
-  auto automorphisms = getAutomorphisms();
-  if (verbosePlannerLog()) {
-    std::stringstream ss;
-    for (auto& permutation : automorphisms) {
-      ss << std::endl;
-      for (auto v : permutation) ss << " " << v;
-    }
-    LOG(INFO) << "automorphisms:" << ss.str();
+  // Symmetry-breaking conditions (Grochow and Kellis): take the orbit O of the smallest vertex n0 that the current
+  // group moves, require n0 < m for every m in O \ {n0}, continue with the stabilizer of n0, and repeat until the
+  // group is trivial. Every class of automorphic matches then has exactly one member that satisfies all conditions.
+  // This needs the orbits of the whole group and the stabilizer of n0. bliss reports only a generating set of the
+  // automorphism group, so the orbits are computed as the closure of the generators, and the stabilizer of n0 is
+  // computed by bliss itself after giving n0 a color of its own (a generating set of the stabilizer is not the subset
+  // of the generators that fix n0).
+  const uint32_t n = bliss_q_.get_nof_vertices();
+  std::vector<uint32_t> color(n);  // per sorted vertex: dense label colors, then unique colors for fixed vertices
+  {
+    std::map<LabelID, uint32_t> label_color;
+    for (uint32_t i = 0; i < n; ++i) label_color.insert({q_->getVertexLabel(sorted_v_[i]), 0});
+    uint32_t c = 0;
+    for (auto& p : label_color) p.second = c++;
+    for (uint32_t i = 0; i < n; ++i) color[i] = label_color.at(q_->getVertexLabel(sorted_v_[i]));
   }
-
-  auto eclasses = getAEquivalenceClasses(automorphisms);
+  uint32_t next_color = *std::max_element(color.begin(), color.end()) + 1;
   std::vector<std::pair<QueryVertexID, QueryVertexID>> conds;
-  // Don't pick largest: want conditions on what will likely be the core vertices first, so that there are no
-  // conditions across sibling groups.
-  auto eclass_it = std::find_if(eclasses.cbegin(), eclasses.cend(), [](auto&& a1) { return a1.second.size() > 1; });
-  while (eclass_it != eclasses.cend() && eclass_it->second.size() > 1) {
-    const auto& eclass = eclass_it->second;
-
-    if (verbosePlannerLog()) {
-      std::stringstream ss;
-      for (auto&& s : eclasses) {
-        ss << std::endl << s.first << ": ";
-        for (QueryVertexID v : s.second) ss << v << " ";
-      }
-      DLOG(INFO) << "equivalence classes:" << ss.str();
-    }
-
-    QueryVertexID n0 = *eclass.cbegin();
-    for (auto&& f : automorphisms) {
-      QueryVertexID min = *std::min_element(std::next(eclass.cbegin()), eclass.cend(),
-                                            [&f](QueryVertexID n, QueryVertexID m) { return f[n] < f[m]; });
-      conds.emplace_back(n0, min);
-      if (verbosePlannerLog()) {
-        DLOG(INFO) << "add partial order condition " << n0 << '<' << min;
+  while (true) {
+    bliss::Graph g(n);
+    for (uint32_t i = 0; i < n; ++i) g.change_color(i, color[i]);
+    for (QueryVertexID u = 0; u < q_->getNumVertices(); ++u) {
+      auto nbrs = q_->getOutNeighbors(u);
+      for (uint32_t j = 0; j < nbrs.second; ++j) {
+        if (nbrs.first[j] < u) g.add_edge(mapping_[u], mapping_[nbrs.first[j]]);
       }
     }
-
-    automorphisms.erase(std::remove_if(automorphisms.begin(), automorphisms.end(),
-                                       [n0](auto& permutation) { return permutation[n0] != n0; }),
-                        automorphisms.end());
-    if (verbosePlannerLog()) {
-      std::stringstream ss;
-      for (auto& permutation : automorphisms) {
-        ss << std::endl;
-        for (auto v : permutation) ss << " " << v;
+    std::vector<std::vector<uint32_t>> generators;
+    bliss::Stats stats;
+    g.find_automorphisms(stats,
+                         [](void* resultp, uint32_t n_vertices, const uint32_t* aut) {
+                           ((std::vector<std::vector<uint32_t>>*)resultp)
+                               ->push_back(std::vector<uint32_t>(aut, aut + n_vertices));
+                         },
+                         &generators);
+    // orbits: connected components of the union of the generator permutations
+    std::vector<uint32_t> parent(n);
+    std::iota(parent.begin(), parent.end(), 0);
+    std::function<uint32_t(uint32_t)> find = [&parent, &find](uint32_t x) {
+      return parent[x] == x ? x : (parent[x] = find(parent[x]));
+    };
+    for (auto& perm : generators) {
+      for (uint32_t i = 0; i < n; ++i) {
+        auto a = find(i), b = find(perm[i]);
+        if (a != b) parent[std::max(a, b)] = std::min(a, b);
       }
-      DLOG(INFO) << "automorphisms:" << ss.str();
     }
-
-    eclasses = getAEquivalenceClasses(automorphisms);
-    eclass_it = std::find_if(eclasses.cbegin(), eclasses.cend(), [](auto&& a1) { return a1.second.size() > 1; });
+    // the smallest vertex in a non-trivial orbit; it is the smallest element of its orbit
+    uint32_t n0 = n;
+    for (uint32_t i = 0; i < n && n0 == n; ++i) {
+      for (uint32_t j = i + 1; j < n; ++j) {
+        if (find(j) == find(i)) {
+          n0 = i;
+          break;
+        }
+      }
+    }
+    if (n0 == n) break;  // trivial group
+    for (uint32_t m = n0 + 1; m < n; ++m) {
+      if (find(m) == find(n0)) {
+        conds.emplace_back(n0, m);
+        if (verbosePlannerLog()) {
+          DLOG(INFO) << "add partial order condition " << n0 << '<' << m;
+        }
+      }
+    }
+    color[n0] = next_color++;  // stabilize n0
   }
-  // eliminate duplicate conditions
   std::sort(conds.begin(), conds.end());
   conds.erase(std::unique(conds.begin(), conds.end()), conds.end());
-
   return orderVertices(conds);
 }
 

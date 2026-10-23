@@ -507,6 +507,10 @@ void Planner::breakSymmetry() {
   if (FLAGS_break_symmetry) {
     AutomorphismCheck ac(query_context_->query_graph);
     qv_partial_order_ = std::make_unique<PartialOrder>(ac.getPartialOrder());
+    if (qv_partial_order_->constraints.empty()) {  // no automorphism to break: plan as without symmetry breaking
+      qv_partial_order_.reset();
+      return;
+    }
 
     if (shortPlannerLog()) {
       std::stringstream ss;

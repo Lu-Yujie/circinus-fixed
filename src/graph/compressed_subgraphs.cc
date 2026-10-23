@@ -368,16 +368,11 @@ uint64_t CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraints(
       if (!constraints_adjs[idx].back().empty()) {  // partial order between them
         group_cnt /= 2;
       }
-    } else if (pruning_set_ptrs[idx].size() < 4) {
+    } else if (pruning_set_ptrs[idx].size() < 4 && !hasConstraints(constraints_adjs[idx])) {
+      // Inclusion-exclusion only without constraints: dividing it by the factorial of the number of constraints is
+      // exact only for identical sets whose constraints form a chain, so constrained groups are enumerated below.
       group_cnt = getEnumerationCount(enumerate_orders[idx], qv_equivalent_classes, cache, existing_vertices,
                                       max_existing_vertices);
-      uint32_t n_conds = 1;
-      for (auto& conds : constraints_adjs[idx]) {
-        n_conds += conds.size();
-      }
-      for (uint32_t d = 2; d <= n_conds; ++d) {
-        group_cnt /= d;
-      }
     } else {
       group_cnt = getNumIsomorphicSubgraphsWithConstraintsImpl(existing_vertices, pruning_set_ptrs[idx],
                                                                constraints_adjs[idx], (limit + count - 1) / count);
@@ -566,16 +561,9 @@ ExactCount CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraintsExact(
       if (!constraints_adjs[idx].back().empty()) {
         group_cnt /= 2;
       }
-    } else if (pruning_set_ptrs[idx].size() < 4) {
+    } else if (pruning_set_ptrs[idx].size() < 4 && !hasConstraints(constraints_adjs[idx])) {
       group_cnt = getEnumerationCountExact(enumerate_orders[idx], qv_equivalent_classes, cache, existing_vertices,
                                            max_existing_vertices);
-      uint32_t n_conds = 1;
-      for (auto& conds : constraints_adjs[idx]) {
-        n_conds += conds.size();
-      }
-      for (uint32_t d = 2; d <= n_conds; ++d) {
-        group_cnt /= d;
-      }
     } else {
       group_cnt = getNumIsomorphicSubgraphsWithConstraintsImpl(existing_vertices, pruning_set_ptrs[idx],
                                                                constraints_adjs[idx], ~0ull);

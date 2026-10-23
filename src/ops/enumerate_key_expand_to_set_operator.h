@@ -475,6 +475,12 @@ uint32_t EnumerateKeyExpandToSetOperator<G, intersect_candidates>::expandInner(u
             if (!po_constraint_existing_set_indices_.empty() && !po_constraint_existing_set_indices_[key_i].empty()) {
               for (auto cond : po_constraint_existing_set_indices_[key_i]) {
                 VertexSet set = output.getSet(cond.second);
+                // lowerBound() reads *first, so an empty set must not be searched; a set that becomes empty here
+                // means that the group has no match
+                if (set->size() == 0) {
+                  skip = true;
+                  break;
+                }
                 if (cond.first) {  // by partial order set is smaller than key
                   auto end = lowerBound(set->begin(), set->end(), key);
                   if (end != set->end()) {
@@ -486,8 +492,13 @@ uint32_t EnumerateKeyExpandToSetOperator<G, intersect_candidates>::expandInner(u
                     *set = SingleRangeVertexSetView(start, set->end());
                   }
                 }
+                if (set->size() == 0) {
+                  skip = true;
+                  break;
+                }
                 output.UpdateSets(cond.second, std::move(set));
               }
+              if (skip) break;
             }
             if (enumerated_key_pruning_indices_[key_i] != -1) {
               const auto& pruning_sets = *subgraph_filter_->getPruningSets(enumerated_key_pruning_indices_[key_i]);

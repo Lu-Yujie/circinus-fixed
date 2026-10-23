@@ -301,6 +301,14 @@ class CompressedSubgraphs {
     return s1.begin() == s2.begin() || std::equal(s1.begin(), s1.end(), s2.begin());
   }
 
+  /** @returns True if any set of a same-label group is constrained by the partial order (symmetry breaking). */
+  static inline bool hasConstraints(const std::vector<std::vector<uint32_t>>& constraints_adj) {
+    for (auto& conds : constraints_adj) {
+      if (!conds.empty()) return true;
+    }
+    return false;
+  }
+
   uint64_t getEnumerationCount(const std::vector<uint32_t>& set_indices, const VertexRelationship* eq,
                                unordered_map<std::string, std::vector<VertexID>>& cache,
                                const unordered_set<VertexID>& except, VertexID max_except) const;

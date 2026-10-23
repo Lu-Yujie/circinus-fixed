@@ -43,7 +43,7 @@ template <typename ForwardIt, typename T>
 inline constexpr typename std::enable_if<!HasLowerBound<ForwardIt>::value, ForwardIt>::type lowerBound(ForwardIt first,
                                                                                                        ForwardIt last,
                                                                                                        const T& value) {
-  if (*first >= value) {
+  if (first == last || *first >= value) {  // the range may be empty (e.g. a set emptied by a partial-order constraint)
     return first;
   }
   // to give an amortized cost of O(1+log(N/m)) for m searches
