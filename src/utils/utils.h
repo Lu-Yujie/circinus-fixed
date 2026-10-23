@@ -121,6 +121,11 @@ static inline uint64_t getNumSubgraphs(const std::vector<CompressedSubgraphs>& g
   return count;
 }
 
+// GCC >= 12 resolves operators in templates at definition time (PR51577);
+// declare the pair printer before its first use. No behavioural change.
+template <typename T1, typename T2>
+inline std::ostream& operator<<(std::ostream& ss, const std::pair<T1, T2>& p);
+
 template <typename V>
 inline std::string toString(const std::vector<V>& vec) {
   std::stringstream ss;
