@@ -185,8 +185,7 @@ void CircinusServer::handleCandidatePhase(const Event& event) {
     if (active_queries_[event.query_id].query_context.query_config.candidate_pruning_strategy ==
         CandidatePruningStrategy::Online) {
       plan_driver = std::make_unique<OnlineQueryExecutionPlanDriver>(plan);
-    } else if (false && (active_queries_[event.query_id].query_context.graph_metadata->numPartitions() == 1 ||
-                         !active_queries_[event.query_id].query_context.query_config.use_partitioned_graph)) {
+    } else if (!active_queries_[event.query_id].query_context.query_config.use_partitioned_graph) {
       plan_driver = std::make_unique<MatchingParallelExecutionPlanDriver>(plan);
     } else {
       plan_driver = std::make_unique<ExecutionPlanDriver>(plan, &zmq_ctx_);
@@ -241,14 +240,14 @@ double CircinusServer::loadGraphFromBinary(const std::string& graph_path, const 
   }
   auto start_loading = std::chrono::steady_clock::now();
   auto data_graph = GraphBase::loadGraphFromBinary(input);
-  auto graph = dynamic_cast<Graph*>(data_graph.get());
-  GraphMetadata meta;
-  if (graph != nullptr) {
-    graph->buildLabelIndex();
-    meta = GraphMetadata(*graph, true);
-  } else {
-    meta = GraphMetadata(*dynamic_cast<ReorderedPartitionedGraph*>(data_graph.get()));
+  if (auto graph = dynamic_cast<Graph*>(data_graph.get())) {
+    // GraphToBinary writes a plain Graph for --partition=0 and --partition=1. Graph::getOutNeighborsWithHint()
+    // ignores the label hint, and the online mode relies on it (it does not intersect with candidate sets), so on a
+    // plain Graph the online mode matched neighbours of any label. Use the same representation as for partitioned
+    // binaries, with one partition (vertices ordered by label and degree; no METIS).
+    data_graph = std::make_unique<ReorderedPartitionedGraph>(*graph, 1, true);
   }
+  GraphMetadata meta(*dynamic_cast<ReorderedPartitionedGraph*>(data_graph.get()));
   auto end_loading = std::chrono::steady_clock::now();
   auto memory = data_graph->getMemoryUsage();
   LOG(INFO) << "graph " << name << " takes " << memory.first / 1024 / 1024 << "MB";

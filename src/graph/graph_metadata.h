@@ -50,7 +50,7 @@ class GraphMetadata {
 
   explicit GraphMetadata(const ReorderedPartitionedGraph& g, bool sorted_by_degree = true)
       : GraphMetadata(false, g.getNumLabels() > 1, false, g.getNumPartitions() == 1, false, g.getNumVertices()) {
-    if (g.getNumPartitions() > 1) {
+    {  // also for a single partition, so that getPartition(0) is valid
       partitioned_metadata_.reserve(g.getNumPartitions());
       for (uint32_t partition = 0; partition < g.getNumPartitions(); ++partition) {
         auto[start, end] = g.getPartitionRange(partition);

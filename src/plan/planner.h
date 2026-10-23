@@ -9,6 +9,7 @@
 #include "algorithms/partial_order.h"
 #include "algorithms/vertex_equivalence.h"
 #include "exec/result.h"
+#include "graph/partitioned_graph.h"
 #include "graph/types.h"
 #include "plan/backtracking_plan.h"
 #include "plan/candidate_pruning_plan.h"
@@ -89,7 +90,12 @@ class Planner {
   }
 
   inline bool toPartitionCandidates() const {
-    return query_context_->graph_metadata->numPartitions() > 1 && query_context_->query_config.use_partitioned_graph;
+    // Also for a single partition (a plain binary is loaded as a one-partition ReorderedPartitionedGraph): the plans
+    // for partitioned graphs run as depth-first tasks, whereas the unpartitioned driver
+    // (MatchingParallelExecutionPlanDriver) keeps whole levels in memory with several threads.
+    return query_context_->query_config.use_partitioned_graph &&
+           (query_context_->graph_metadata->numPartitions() > 1 ||
+            dynamic_cast<const ReorderedPartitionedGraph*>(query_context_->data_graph) != nullptr);
   }
 
   inline std::vector<VertexID> estimateCardinalityInner(const GraphMetadata* metadata) const {
@@ -111,9 +117,13 @@ class Planner {
    * For query execution with partitioned graphs, use GraphView. For query on normal graphs, use Normal;
    * For query using an auxiliary bipartite-graph-based index, use BipartiteGraphView. */
   inline GraphType getGraphType() const {
+    // The operators access the data graph through the type chosen here, so it must be the type of the loaded graph:
+    // GraphToBinary writes a plain Graph for --partition=0 and (with the default --sort_by_degree) --partition=1.
     return query_context_->query_config.use_auxiliary_index
                ? GraphType::BipartiteGraphView
-               : (query_context_->graph_metadata->numPartitions() >= 1 ? GraphType::Partitioned : GraphType::Normal);
+               : (dynamic_cast<const ReorderedPartitionedGraph*>(query_context_->data_graph) != nullptr
+                      ? GraphType::Partitioned
+                      : GraphType::Normal);
   }
 
   /** Generates order, then compression strategy, and then operators */

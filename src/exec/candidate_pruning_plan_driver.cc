@@ -65,7 +65,8 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
   if (plan_->getPhase() == 1) {
     LOG(INFO) << "Candidate pruning phase 1";
     auto n_partitions = query_ctx->graph_metadata->numPartitions();
-    if (n_partitions > 1) {
+    // a ReorderedPartitionedGraph needs the partition scans also when it has a single partition
+    if (n_partitions > 1 || dynamic_cast<const ReorderedPartitionedGraph*>(query_ctx->data_graph) != nullptr) {
       initPhase1TasksForPartitionedGraph(qid, query_ctx, ctx, task_queue);
       return;
     }
