@@ -315,7 +315,12 @@ class CompressedSubgraphs {
   // exceptions include keys and single-element sets with the same label
   inline void getExceptions(unordered_set<VertexID>& exception, const std::vector<uint32_t>& exception_key_indices,
                             const std::vector<uint32_t>& exception_set_indices) const {
-    exception.reserve(exception_key_indices.size() + exception_set_indices.size());
+    // `exception` may already hold elements (EnumerateKeyExpandToSetOperator passes the key map).
+    // reserve(0) on a non-empty phmap 1.32 set calls rehash(0), which shrinks the table to NormalizeCapacity(size())
+    // slots (phmap.h raw_hash_set::rehash: max(n, size()) instead of GrowthToLowerboundCapacity(size())); for
+    // size() = 15, 29-31, 57-63, ... that leaves no empty slot, and the next lookup of an absent vertex
+    // (isExistingVertex) probes forever: the query hangs at 100% CPU. Reserving for the final size avoids the shrink.
+    exception.reserve(exception.size() + exception_key_indices.size() + exception_set_indices.size());
     for (auto idx : exception_key_indices) {
       exception.insert(keys_[idx]);
     }
