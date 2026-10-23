@@ -16,6 +16,7 @@
 #include "graph/types.h"
 #include "graph/vertex_set.h"
 #include "plan/vertex_relationship.h"
+#include "utils/exact_count.h"
 #include "utils/hashmap.h"
 
 namespace circinus {
@@ -222,6 +223,29 @@ class CompressedSubgraphs {
 
   uint64_t getNumIsomorphicSubgraphs(const PruningIndexGroups& pruning_indices, uint64_t limit = ~0u,
                                      const VertexRelationship* eq = nullptr) const;
+
+  /* Exact twins of getNumSubgraphs / getNumIsomorphicSubgraphs[WithConstraints] / getEnumerationCount.
+   * Same algorithm (product of set sizes, IE for 2-3 same-label sets, twin shortcut, DFS for >= 4 sets), but no limit,
+   * u128 for the per-group terms and ExactCount (u128 -> GMP) for the product over sets and groups. */
+  inline ExactCount getNumSubgraphsExact() const {
+    if (sets_.empty()) {
+      return ExactCount(!keys_.empty());
+    }
+    ExactCount n(1);
+    for (auto& set : sets_) {
+      n.mul(set->size());
+    }
+    return n;
+  }
+  ExactCount getNumIsomorphicSubgraphsExact(const PruningIndexGroups& pruning_indices,
+                                            const VertexRelationship* eq) const;
+  ExactCount getNumIsomorphicSubgraphsWithConstraintsExact(
+      const PruningIndexGroups& pruning_indices,
+      const std::vector<std::vector<std::vector<uint32_t>>>& constraints_adjs,
+      const std::vector<std::vector<uint32_t>>& enumerate_orders, const VertexRelationship* eq) const;
+  u128 getEnumerationCountExact(const std::vector<uint32_t>& set_indices, const VertexRelationship* eq,
+                                unordered_map<std::string, std::vector<VertexID>>& cache,
+                                const unordered_set<VertexID>& except, VertexID max_except) const;
 
   uint64_t getNumIsomorphicSubgraphsWithConstraints(
       const PruningIndexGroups& pruning_indices,

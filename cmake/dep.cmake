@@ -136,6 +136,17 @@ else()
 endif()
 list(APPEND EXTERNAL_DEPENDENCY phmap_ep)
 
+### gmp (exact match counts above 2^128)
+find_path(GMP_INCLUDE_DIR NAMES gmp.h)
+find_library(GMP_LIBRARY NAMES libgmp.a gmp)
+if(GMP_INCLUDE_DIR AND GMP_LIBRARY)
+  message(STATUS "Found GMP: ${GMP_INCLUDE_DIR} ${GMP_LIBRARY}")
+  list(APPEND EXTERNAL_INCLUDES ${GMP_INCLUDE_DIR})
+  list(APPEND EXTERNAL_LIBRARY ${GMP_LIBRARY})
+else()
+  message(FATAL_ERROR "GMP not found")
+endif()
+
 ### zmq
 find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp zmq_addon.hpp)
 find_library(ZMQ_LIBRARY NAMES zmq)

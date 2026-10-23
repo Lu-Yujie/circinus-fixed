@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <string>
@@ -23,9 +24,23 @@ class Outputs {
   std::vector<std::ofstream> output_file_per_thread_;
   uint32_t n_threads_ = 0;
   uint64_t limit_per_thread_ = ~0u;
+  std::vector<ExactCount> exact_per_thread_;
+  std::atomic<bool> limit_hit_{false};
 
  public:
   Outputs& init(uint32_t n_threads, const std::string& path_prefix = "");
+
+  /* Without a match limit (limit == ~0ull, e.g. Benchmark --match_limit 0) counting is exact and does not stop at
+   * 2^64-1. */
+  inline bool isUnlimited() const { return limit_per_thread_ == ~0ull; }
+  inline void addExact(const ExactCount& c, uint32_t thread_id) { exact_per_thread_[thread_id].add(c); }
+  inline void setLimitHit() { limit_hit_ = true; }
+  inline bool limitHit() const { return limit_hit_; }
+  inline std::string getExactCount() const {
+    ExactCount total;
+    for (auto& c : exact_per_thread_) total.add(c);
+    return total.toString();
+  }
 
   inline uint64_t updateCount(uint64_t count, uint32_t thread_id) {
     DCHECK_LT(thread_id, n_matches_per_thread_.size());

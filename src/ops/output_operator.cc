@@ -19,6 +19,19 @@ class CountOutputOperator : public OutputOperator {
 
   bool validateAndOutput(const std::vector<CompressedSubgraphs>& input, uint32_t& input_start, uint32_t input_end,
                          uint32_t output_index) const override {
+    if (outputs_->isUnlimited()) {  // no match limit: exact counting
+      for (; input_start < input_end; ++input_start) {
+        auto& group = input[input_start];
+        if (!set_less_than_constraints_.empty()) {
+          outputs_->addExact(group.getNumIsomorphicSubgraphsWithConstraintsExact(
+                                 same_label_indices_, constraints_adjs_, enumerate_orders_, qv_relationship_),
+                             output_index);
+        } else {
+          outputs_->addExact(group.getNumIsomorphicSubgraphsExact(same_label_indices_, qv_relationship_), output_index);
+        }
+      }
+      return false;
+    }
     auto count_acc = outputs_->getCount(output_index);
     if (!set_less_than_constraints_.empty()) {
       while (input_start < input_end) {
@@ -27,8 +40,10 @@ class CountOutputOperator : public OutputOperator {
             group.getNumIsomorphicSubgraphsWithConstraints(same_label_indices_, constraints_adjs_, enumerate_orders_,
                                                            outputs_->getLimitPerThread() - count_acc, qv_relationship_);
         count_acc = outputs_->updateCount(update, output_index);
+        outputs_->addExact(ExactCount(update), output_index);
         ++input_start;
         if (count_acc >= outputs_->getLimitPerThread()) {
+          outputs_->setLimitHit();
           return true;
         }
       }
@@ -39,8 +54,10 @@ class CountOutputOperator : public OutputOperator {
       auto update = group.getNumIsomorphicSubgraphs(same_label_indices_, outputs_->getLimitPerThread() - count_acc,
                                                     qv_relationship_);
       count_acc = outputs_->updateCount(update, output_index);
+      outputs_->addExact(ExactCount(update), output_index);
       ++input_start;
       if (count_acc >= outputs_->getLimitPerThread()) {
+        outputs_->setLimitHit();
         // DLOG(INFO) << "last input num subgraphs " << group.getNumSubgraphs() << " isomorphic " << update << " total "
         //            << count_acc << " limit " << outputs_->getLimitPerThread();
         return true;
@@ -116,6 +133,7 @@ void OutputOperator::setPartialOrder(std::vector<std::pair<uint32_t, uint32_t>>&
 
 Outputs& Outputs::init(uint32_t n_threads, const std::string& path_prefix) {
   n_threads_ = n_threads;
+  exact_per_thread_.assign(n_threads, ExactCount());
   if (path_prefix != "") {
     output_file_per_thread_.resize(n_threads);
     for (uint32_t i = 0; i < n_threads; ++i) {

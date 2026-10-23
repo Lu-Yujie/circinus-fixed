@@ -207,6 +207,8 @@ struct QueryResult {
   double max_task_time = 0;
   double elapsed_execution_time = 0;
   uint64_t embedding_count = 0;
+  std::string exact_count;          // exact decimal count (empty: use embedding_count)
+  std::string status = "complete";  // complete: all matches counted, exact; limit: stopped at the match limit
   std::string matching_order;
   std::string profile_info;
 
@@ -218,8 +220,9 @@ struct QueryResult {
 
   friend std::ostream& operator<<(std::ostream& out, const QueryResult& res) {
     return out << res.elapsed_execution_time << ',' << res.filter_time << ',' << res.plan_time << ','
-               << res.enumerate_time << ',' << res.embedding_count << ',' << res.matching_order << ','
-               << res.max_task_time;
+               << res.enumerate_time << ','
+               << (res.exact_count.empty() ? std::to_string(res.embedding_count) : res.exact_count) << ','
+               << res.matching_order << ',' << res.max_task_time << ',' << res.status;
   }
 };
 

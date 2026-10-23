@@ -130,7 +130,11 @@ class ExecutionResult : public Result {
  public:
   virtual ~ExecutionResult() {}
 
-  inline void setCount() { result_.embedding_count = outputs_.getCount(); }
+  inline void setCount() {
+    result_.embedding_count = outputs_.getCount();
+    result_.exact_count = outputs_.getExactCount();
+    if (outputs_.limitHit()) result_.status = "limit";
+  }
   inline void addEnumerateTime(double time) {
     result_.enumerate_time += time;
     result_.max_task_time = std::max(result_.max_task_time, time);

@@ -389,6 +389,205 @@ uint64_t CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraints(
   return std::min(count, limit);
 }
 
+// ---------------- exact counting (mirrors the uint64_t functions above line by line) ----------------
+u128 CompressedSubgraphs::getEnumerationCountExact(const std::vector<uint32_t>& set_indices,
+                                                   const VertexRelationship* qv_equivalent_classes,
+                                                   unordered_map<std::string, std::vector<VertexID>>& cache,
+                                                   const unordered_set<VertexID>& except, VertexID max_except) const {
+  uint32_t n_sets = set_indices.size();
+  DCHECK_GT(n_sets, 1) << set_indices[0];
+  DCHECK_LT(n_sets, 4) << "counting more than 3 sets is not supported yet";
+  u128 cnt = 0, product = 1;  // at most 3 sets of < 2^32 vertices: every term fits in u128
+  if (except.empty()) {
+    for (auto index : set_indices) {
+      product *= getSet(index)->size();
+    }
+    cnt = product;
+    u128 size = 0;
+    for (uint32_t i = 0; i < n_sets; ++i) {
+      for (uint32_t j = i + 1; j < n_sets; ++j) {
+        bool to_cache = (j + 1) < n_sets;
+        size = getIntersectionSize(set_indices[i], set_indices[j], qv_equivalent_classes, to_cache ? &cache : nullptr,
+                                   except);
+        size *= product / getSet(set_indices[i])->size() / getSet(set_indices[j])->size();
+        cnt -= size;
+      }
+    }
+  } else {
+    std::vector<u128> set_sizes;
+    set_sizes.reserve(n_sets);
+    for (auto index : set_indices) {
+      set_sizes.push_back(countExcept(*getSet(index), except, max_except));
+      if (set_sizes.back() == 0) {
+        return 0;
+      }
+      product *= set_sizes.back();
+    }
+    cnt = product;
+    for (uint32_t i = 0; i < n_sets; ++i) {
+      for (uint32_t j = i + 1; j < n_sets; ++j) {
+        bool to_cache = (j + 1) < n_sets;
+        u128 size = getIntersectionSize(set_indices[i], set_indices[j], qv_equivalent_classes,
+                                        to_cache ? &cache : nullptr, except);
+        size *= product / set_sizes[i] / set_sizes[j];
+        cnt -= size;
+      }
+    }
+  }
+  if (n_sets == 3) {
+    if (cache.empty()) {
+      cnt += 2 * (u128)intersectionCount(*getSet(set_indices[0]), *getSet(set_indices[2]));
+    } else if (identicalSets(set_indices[0], set_indices[2], qv_equivalent_classes) ||
+               identicalSets(set_indices[1], set_indices[2], qv_equivalent_classes)) {
+      cnt += 2 * (u128)cache.begin()->second.size();
+    } else {
+      SingleRangeVertexSetView view(cache.begin()->second.data(), cache.begin()->second.size());
+      cnt += 2 * (u128)intersectionCount(view, *getSet(set_indices[2]));
+    }
+  }
+  return cnt;
+}
+
+ExactCount CompressedSubgraphs::getNumIsomorphicSubgraphsExact(const PruningIndexGroups& pruning_indices,
+                                                               const VertexRelationship* qv_equivalent_classes) const {
+  if (pruning_indices.empty()) {
+    return getNumSubgraphsExact();
+  }
+  if (sets_.empty()) {
+    return ExactCount(!keys_.empty());
+  }
+  auto n_pruning_groups = pruning_indices.size();
+  unordered_set<uint32_t> covered_indices;
+  std::vector<std::vector<const SingleRangeVertexSetView*>> pruning_set_ptrs(n_pruning_groups);
+  std::vector<uint32_t> pruning_set_group_size(n_pruning_groups, 1);  // upstream ordering heuristic, kept as is
+  for (uint32_t i = 0; i < n_pruning_groups; ++i) {
+    auto pruning_set_indices = pruning_indices[i].second;
+    for (auto set_index : pruning_set_indices) {
+      covered_indices.insert(set_index);
+      auto& ptr = *getSet(set_index);
+      pruning_set_ptrs[i].push_back(&ptr);
+      pruning_set_group_size[i] *= ptr.size();
+    }
+  }
+  ExactCount count(1);
+  if (getNumSets() > covered_indices.size()) {
+    for (uint32_t i = 0; i < getNumSets(); ++i) {
+      if (covered_indices.count(i) == 0) {
+        count.mul(sets_[i]->size());
+      }
+    }
+  }
+  std::vector<uint32_t> pruning_set_group_index(n_pruning_groups);
+  std::iota(pruning_set_group_index.begin(), pruning_set_group_index.end(), 0);
+  std::sort(pruning_set_group_index.begin(), pruning_set_group_index.end(),
+            [&pruning_set_group_size](uint32_t idx1, uint32_t idx2) {
+              return pruning_set_group_size[idx1] < pruning_set_group_size[idx2];
+            });
+  unordered_set<VertexID> existing_vertices;
+  VertexID max_existing_vertices = 0;
+  unordered_map<std::string, std::vector<VertexID>> cache;
+  for (auto idx : pruning_set_group_index) {
+    existing_vertices.clear();
+    max_existing_vertices = 0;
+    for (auto key_i : pruning_indices[idx].first) {
+      existing_vertices.insert(getKeyVal(key_i));
+      max_existing_vertices = std::max(max_existing_vertices, getKeyVal(key_i));
+    }
+    u128 group_cnt = 0;
+    if (pruning_set_ptrs[idx].size() == 1) {
+      group_cnt = countExcept(*pruning_set_ptrs[idx].front(), existing_vertices, max_existing_vertices);
+    } else if (pruning_set_ptrs[idx].size() < 4) {
+      group_cnt = getEnumerationCountExact(pruning_indices[idx].second, qv_equivalent_classes, cache,
+                                           existing_vertices, max_existing_vertices);
+    } else {
+      group_cnt = getNumIsomorphicSubgraphsImpl(existing_vertices, pruning_set_ptrs[idx], ~0ull);
+    }
+    if (group_cnt == 0) return ExactCount(0);
+    count.mul(group_cnt);
+    cache.clear();
+  }
+  return count;
+}
+
+ExactCount CompressedSubgraphs::getNumIsomorphicSubgraphsWithConstraintsExact(
+    const PruningIndexGroups& pruning_indices, const std::vector<std::vector<std::vector<uint32_t>>>& constraints_adjs,
+    const std::vector<std::vector<uint32_t>>& enumerate_orders, const VertexRelationship* qv_equivalent_classes) const {
+  if (pruning_indices.empty()) {
+    return getNumSubgraphsExact();
+  }
+  if (sets_.empty()) {
+    return ExactCount(!keys_.empty());
+  }
+  auto n_pruning_groups = enumerate_orders.size();
+  unordered_set<uint32_t> covered_indices;
+  std::vector<std::vector<const SingleRangeVertexSetView*>> pruning_set_ptrs(n_pruning_groups);
+  std::vector<uint32_t> pruning_set_group_size(n_pruning_groups, 1);
+  for (uint32_t i = 0; i < n_pruning_groups; ++i) {
+    for (auto set_index : enumerate_orders[i]) {
+      covered_indices.insert(set_index);
+      auto& ptr = *getSet(set_index);
+      pruning_set_ptrs[i].push_back(&ptr);
+      pruning_set_group_size[i] *= ptr.size();
+    }
+  }
+  ExactCount count(1);
+  if (getNumSets() > covered_indices.size()) {
+    for (uint32_t i = 0; i < getNumSets(); ++i) {
+      if (covered_indices.count(i) == 0) {
+        count.mul(sets_[i]->size());
+      }
+    }
+  }
+  std::vector<uint32_t> pruning_set_group_index(n_pruning_groups);
+  std::iota(pruning_set_group_index.begin(), pruning_set_group_index.end(), 0);
+  std::sort(pruning_set_group_index.begin(), pruning_set_group_index.end(),
+            [&pruning_set_group_size](uint32_t idx1, uint32_t idx2) {
+              return pruning_set_group_size[idx1] < pruning_set_group_size[idx2];
+            });
+  unordered_set<VertexID> existing_vertices;
+  VertexID max_existing_vertices = 0;
+  unordered_map<std::string, std::vector<VertexID>> cache;
+  for (auto idx : pruning_set_group_index) {
+    existing_vertices.clear();
+    max_existing_vertices = 0;
+    for (auto key_i : pruning_indices[idx].first) {
+      existing_vertices.insert(getKeyVal(key_i));
+      max_existing_vertices = std::max(max_existing_vertices, getKeyVal(key_i));
+    }
+    u128 group_cnt;
+    if (pruning_set_ptrs[idx].size() == 1) {
+      group_cnt = countExcept(*pruning_set_ptrs[idx].front(), existing_vertices, max_existing_vertices);
+    } else if (pruning_set_ptrs[idx].size() == 2 &&
+               identicalSets(enumerate_orders[idx].front(), enumerate_orders[idx].back(), qv_equivalent_classes)) {
+      u128 size = existing_vertices.empty() ? pruning_set_ptrs[idx].front()->size()
+                                            : countExcept(*pruning_set_ptrs[idx].front(), existing_vertices,
+                                                          max_existing_vertices);
+      group_cnt = size * (size < 1 ? 0 : size - 1);
+      if (!constraints_adjs[idx].back().empty()) {
+        group_cnt /= 2;
+      }
+    } else if (pruning_set_ptrs[idx].size() < 4) {
+      group_cnt = getEnumerationCountExact(enumerate_orders[idx], qv_equivalent_classes, cache, existing_vertices,
+                                           max_existing_vertices);
+      uint32_t n_conds = 1;
+      for (auto& conds : constraints_adjs[idx]) {
+        n_conds += conds.size();
+      }
+      for (uint32_t d = 2; d <= n_conds; ++d) {
+        group_cnt /= d;
+      }
+    } else {
+      group_cnt = getNumIsomorphicSubgraphsWithConstraintsImpl(existing_vertices, pruning_set_ptrs[idx],
+                                                               constraints_adjs[idx], ~0ull);
+    }
+    if (group_cnt == 0) return ExactCount(0);
+    count.mul(group_cnt);
+    cache.clear();
+  }
+  return count;
+}
+// ---------------- end of exact counting ----------------
+
 std::ostream& CompressedSubgraphs::logEnumerated(std::ostream& ss,
                                                  const std::vector<std::pair<bool, uint32_t>>& log_indices,
                                                  uint64_t limit) const {
