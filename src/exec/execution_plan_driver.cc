@@ -425,9 +425,13 @@ void MatchingParallelExecutionPlanDriver::taskFinish(std::unique_ptr<TaskBase>& 
 void MatchingParallelExecutionPlanDriver::taskTimeOut(std::unique_ptr<TaskBase>& task,
                                                       ThreadsafeQueue<ServerEvent>* reply_queue) {
   is_time_out_ = true;
+  if (dynamic_cast<MatchingParallelTask*>(task.get()) == nullptr) {  // single-thread execution: the only task
+    finishPlan(reply_queue);
+    return;
+  }
   if (--task_counters_[task->getTaskId()] == 0) {
     if (task->getTaskId() == 0 || task_depleted_[task->getTaskId() - 1]) {
-      for (uint32_t i = task->getTaskId(); task_counters_[i] == 0 && i < task_counters_.size(); ++i) {
+      for (uint32_t i = task->getTaskId(); i < task_counters_.size() && task_counters_[i] == 0; ++i) {
         task_depleted_[i] = true;
         ++n_finished_tasks_;
       }
