@@ -163,7 +163,11 @@ void CandidatePruningPlanDriver::taskFinish(std::unique_ptr<TaskBase>& task, Thr
 
 void CandidatePruningPlanDriver::taskTimeOut(std::unique_ptr<TaskBase>& task,
                                              ThreadsafeQueue<ServerEvent>* reply_queue) {
-  if (--task_counters_[task->getTaskId()] == 0 && ++n_finished_tasks_ == task_counters_.size()) {
+  // In phases 1 and 2 all tasks are scheduled at once, so the phase ends when all of them have stopped. In phase 3 the
+  // filters are scheduled one after another by taskFinish(); after a filter has timed out no further filter is
+  // scheduled, so the phase must end as soon as the tasks of the timed-out filter have stopped.
+  if (--task_counters_[task->getTaskId()] == 0 &&
+      (++n_finished_tasks_ == task_counters_.size() || plan_->getPhase() == 3)) {
     finish_event_->type = ServerEvent::TimeOut;
     reply_queue->push(std::move(*finish_event_));
   }
