@@ -85,17 +85,22 @@ class GraphBase {
     for (VertexID id = 0; id < n_vertices_; ++id) {
       vertex_degrees_count[id * ncon] = getVertexOutDegree(id);
     }
-    idx_t* xadj = (idx_t*)getVList();
-    idx_t* adjncy = (idx_t*)getEList();
+    // METIS takes idx_t arrays, and the width of idx_t (32 or 64 bits) is a build option of METIS (IDXTYPEWIDTH;
+    // cmake/dep.cmake builds it with i64=1). The CSR arrays here hold 32-bit EdgeID / VertexID, so casting their
+    // pointers to idx_t* makes a 64-bit METIS read garbage. Pass copies of the width METIS expects.
+    std::vector<idx_t> xadj(vlist_.begin(), vlist_.end());
+    std::vector<idx_t> adjncy(elist_.begin(), elist_.end());
     idx_t nvtxs = getNumVertices();
-    idx_t objval;
+    idx_t objval = 0;
     idx_t* part = &parts[0];
     auto vwgt = nullptr;  // vwgt = vertex_degrees_count.data();
     idx_t options[METIS_NOPTIONS];
     METIS_SetDefaultOptions(options);
 
     options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT;  // Total communication volume minimization. METIS_OBJTYPE_VOL;
-    METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy, vwgt, NULL, NULL, &nparts, NULL, NULL, options, &objval, part);
+    int status = METIS_PartGraphKway(&nvtxs, &ncon, xadj.data(), adjncy.data(), vwgt, NULL, NULL, &nparts, NULL, NULL,
+                                     options, &objval, part);
+    CHECK_EQ(status, METIS_OK) << "METIS_PartGraphKway failed";
     return std::make_pair(std::move(parts), objval);
   }
 
