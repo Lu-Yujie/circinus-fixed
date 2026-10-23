@@ -89,7 +89,7 @@ class ExecutionPlan {
     uint64_t bits = 0;
     for (uint32_t i = 0; i < size; ++i) {
       if (isInCover(matching_order_[i])) {
-        bits |= 1 << matching_order_[i];
+        bits |= 1ULL << matching_order_[i];
       }
     }
     return bits;

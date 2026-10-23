@@ -361,7 +361,7 @@ void ExecutionPlan::populatePhysicalPlan(const QueryGraph* g, const std::vector<
           prev = current;
           last_op_ = (i == matching_order_.size() - 1);
           current = newExpandIntoOperator(set_parents, target_vertex, key_parents, label_existing_vertices_map);
-          op_input_subquery_cover_.emplace_back(i + 1, input_cover_bits | 1 << target_vertex, true);
+          op_input_subquery_cover_.emplace_back(i + 1, input_cover_bits | 1ULL << target_vertex, true);
         } else if (key_parents.size() == 1) {
           current = newExpandEdgeKeyToKeyOperator(key_parents.front(), target_vertex, same_label_indices);
         } else if (key_parents.size() > 1) {

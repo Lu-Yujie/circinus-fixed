@@ -53,7 +53,7 @@ ExecutionPlan* NaivePlanner::generatePlan(const PartialOrder* po) {
 
   uint64_t cover_bits = 0;
   for (QueryVertexID i = 0; i < select_cover.size(); ++i) {
-    cover_bits |= ((uint32_t)select_cover[i]) << i;
+    cover_bits |= ((uint64_t)select_cover[i]) << i;
   }
 
   if (shortPlannerLog()) {
@@ -388,11 +388,11 @@ double NaivePlanner::intersectionCountCoeff(const std::vector<double>& cardinali
     }
     // computation cost for expand-into / expand-from-set
     if (key_parent_cnt == 0) {  // set to key
-      auto key_bits = parent_cover_bits | (1 << set_parent);
+      auto key_bits = parent_cover_bits | (1ULL << set_parent);
       cost = estimateCardinalityByProduct(cardinality, key_bits, level - 1);
       cost *= 2;  // very expensive to expand from set when there is no candidate set
     }
-    auto key_bits = parent_cover_bits | (1 << target_vertex);  // including target
+    auto key_bits = parent_cover_bits | (1ULL << target_vertex);  // including target
     return cost + set_parent_cnt * estimateCardinalityByProduct(cardinality, key_bits, level);
   }
   if (set_parent_cnt > 0) {  // enumerate key expand to set
@@ -444,7 +444,7 @@ double NaivePlanner::estimateExpandCost(const GraphBase* data_graph,
             (*candidate_views)[nbrs[k]].size() < (*candidate_views)[set_parent].size()) {
           set_parent = nbrs[k];
         }
-        set_parent_mask |= 1 << nbrs[k];
+        set_parent_mask |= 1ULL << nbrs[k];
         ++set_parent_cnt;
       } else {
         ++key_parent_cnt;
@@ -463,10 +463,10 @@ double NaivePlanner::estimateExpandCost(const GraphBase* data_graph,
       }
       // computation cost for expand-into / expand-from-set
       if (key_parent_cnt == 0) {  // set to key
-        auto key_bits = parent_cover_bits | (1 << set_parent);
+        auto key_bits = parent_cover_bits | (1ULL << set_parent);
         cost = getCardinality(car, level - 1, key_bits, data_graph, candidate_views);
       }
-      auto key_bits = parent_cover_bits | (1 << target_vertex);  // including target
+      auto key_bits = parent_cover_bits | (1ULL << target_vertex);  // including target
       return cost + set_parent_cnt * getCardinality(car, level, key_bits, data_graph, candidate_views);
     }
     if (set_parent_cnt > 0) {  // enumerate key expand to set
@@ -479,7 +479,7 @@ double NaivePlanner::estimateExpandCost(const GraphBase* data_graph,
   }
 
   if (target_in_cover) {                                       // compute the cost by the number of compressed groups
-    auto key_bits = parent_cover_bits | (1 << target_vertex);  // including target
+    auto key_bits = parent_cover_bits | (1ULL << target_vertex);  // including target
     return getCardinality(car, level, key_bits, data_graph, candidate_views);
   } else if (set_parent_cnt > 0) {
     return getCardinality(car, level - 1, cover_bits, data_graph, candidate_views);
@@ -1010,13 +1010,13 @@ void NaivePlanner::generateCoverNode(const std::vector<std::vector<double>>& car
         if ((cover_node.cover_bits | last_level_cover_node.cover_bits) == cover_node.cover_bits) {  // key containment
           // avoid enumerate key expand to key
           if ((cover_node.cover_bits >> matching_order_[i] & 1) &&
-              (last_level_cover_node.cover_bits | (1 << matching_order_[i])) != cover_node.cover_bits) {
+              (last_level_cover_node.cover_bits | (1ULL << matching_order_[i])) != cover_node.cover_bits) {
             continue;
           }
           if ((cover_node.cover_bits >> matching_order_[i] & 1) == 0) {
             auto mask = last_level_cover_node.cover_bits;
             for (auto x : to_intersect_vertices[i]) {
-              mask |= 1 << x;
+              mask |= 1ULL << x;
             }
             if (mask != cover_node.cover_bits) {
               continue;
