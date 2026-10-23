@@ -132,6 +132,12 @@ class CircinusServer {
    */
   void finishQuery(uint32_t query_index, void* result, const std::string& error);
 
+  /* Queries whose count is 0 because a query vertex has no candidate used to abort (LOG(FATAL) in the
+   * partitioned phase-1 driver, CHECK in the phase-3 driver and the planner). Detect an empty candidate set and reply
+   * with an exact count of 0 instead. */
+  bool hasNoLDFCandidate(uint32_t query_index) const;
+  void finishQueryWithZeroCount(uint32_t query_index);
+
   /**
    * Copy is incurred to copy data to zmq message buffer
    */

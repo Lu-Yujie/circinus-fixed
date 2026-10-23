@@ -140,7 +140,15 @@ void CandidatePruningPlanDriver::taskFinish(std::unique_ptr<TaskBase>& task, Thr
       auto filter = dynamic_cast<NeighborhoodFilter*>(operators_[n_finished_tasks_].get());
       QueryVertexID query_vertex = filter->getQueryVertex();
       uint64_t input_size = (*result_->getMergedCandidates())[query_vertex].size();
-      CHECK_NE(input_size, 0) << "query vertex " << query_vertex << " has empty candidate set, not handled yet";
+      // This used to fail a CHECK ("has empty candidate set, not handled yet"). An empty candidate set
+      // means that the query has no match: end the phase now; the server then replies with count 0.
+      bool any_empty = (input_size == 0);
+      for (auto& cands : *result_->getMergedCandidates()) any_empty |= cands.empty();
+      if (any_empty) {
+        reset();
+        reply_queue->push(std::move(*finish_event_));
+        return;
+      }
       filter->setInputSize(input_size);
       filter->setParallelism(getFilterParallelism(input_size));
       // filter->setParallelism((input_size + FLAGS_batch_size - 1) / FLAGS_batch_size);

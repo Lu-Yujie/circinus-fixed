@@ -161,6 +161,19 @@ void CircinusServer::handleCandidatePhase(const Event& event) {
   auto planner = active_queries_[event.query_id].planner;
   DCHECK(planner != nullptr);
   auto result = (const CandidateResult*)event.data;
+  {  // an empty candidate set (after any pruning phase) means that the query has no match
+    auto& qctx = active_queries_[event.query_id].query_context;
+    if (qctx.query_config.candidate_pruning_strategy != CandidatePruningStrategy::Online) {
+      auto n_qvs = qctx.query_graph.getNumVertices();
+      for (QueryVertexID u = 0; u < n_qvs; ++u) {
+        if (result->getMergedCandidates(u).empty()) {
+          LOG(INFO) << "query vertex " << u << " has no candidate; count is 0";
+          finishQueryWithZeroCount(event.query_id);
+          return;
+        }
+      }
+    }
+  }
   auto plan = planner->updateCandidatePruningPlan(result);
   std::unique_ptr<PlanDriver> plan_driver = nullptr;
   if (plan->isFinished()) {
@@ -300,6 +313,47 @@ void CircinusServer::finishQuery(uint32_t query_index, void* result, const std::
   executor_manager_.clearQuery(query_index, error);
 }
 
+// The same test as LogicalLDFScan::toPhysicalOperators, which creates no scan for a partition without
+// a vertex of the label or without a vertex of sufficient degree. If that holds in every partition for some query
+// vertex, the partitioned phase-1 driver would LOG(FATAL) ("No candidate matching query vertex?"); the count is 0.
+bool CircinusServer::hasNoLDFCandidate(uint32_t query_index) const {
+  auto& qctx = active_queries_[query_index].query_context;
+  auto& q = qctx.query_graph;
+  auto& meta = *qctx.graph_metadata;
+  auto may_have = [&q](const GraphMetadata& m, QueryVertexID u) {
+    uint64_t card = m.getNumVertices();
+    if (m.hasLabelFrequency() && q.getVertexLabel(u) != ALL_LABEL) {
+      card = std::min<uint64_t>(card, m.getLabelFrequency(q.getVertexLabel(u)));
+    }
+    if (m.hasOutDegreeFrequency()) {
+      card = std::min<uint64_t>(card, m.getNumVerticesWithOutDegreeGE(q.getVertexOutDegree(u)));
+    }
+    return card > 0;
+  };
+  for (QueryVertexID u = 0; u < q.getNumVertices(); ++u) {
+    bool any = false;
+    if (meta.numPartitions() > 1) {
+      for (uint32_t i = 0; i < meta.numPartitions() && !any; ++i) any = may_have(meta.getPartition(i), u);
+    } else {
+      any = may_have(meta, u);
+    }
+    if (!any) {
+      LOG(INFO) << "query vertex " << u << " has no LDF candidate in any partition; count is 0";
+      return true;
+    }
+  }
+  return false;
+}
+
+void CircinusServer::finishQueryWithZeroCount(uint32_t query_index) {
+  auto& query = active_queries_[query_index];
+  query.filter_time = toSeconds(query.filter_start_time, std::chrono::high_resolution_clock::now());
+  query.plan_time = 0;
+  QueryResult res;  // exact count 0, status complete, empty matching order
+  res.embedding_count = 0;
+  finishQuery(query_index, &res, "");
+}
+
 void CircinusServer::consolidateConfigs(QueryContext& qctx) {
   auto& conf = qctx.query_config;
 
@@ -359,6 +413,10 @@ void CircinusServer::prepareQuery(uint32_t query_index) {
     } else {
       query_state.filter_start_time = std::chrono::high_resolution_clock::now();
 
+      if (hasNoLDFCandidate(query_index)) {
+        finishQueryWithZeroCount(query_index);
+        return;
+      }
       // phase 1: preprocessing
       CandidatePruningPlan* plan = query_state.planner->generateCandidatePruningPlan();
       if (plan->isFinished()) {  // no candidate generation
