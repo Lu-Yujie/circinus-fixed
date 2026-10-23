@@ -534,6 +534,14 @@ BacktrackingPlan* Planner::generateExecutionPlan(const CandidateResult* result, 
     if (shortPlannerLog()) {
       LOG(INFO) << "Order:" << toString(order);
     }
+    // With several threads the candidates of the start vertex are split into chunks below, one task per chunk, so
+    // the set of the start vertex holds only one chunk and must not be reused for another query vertex (as for the
+    // partitioning query vertex of partitioned plans).
+    std::vector<QueryVertexID> chunked_qvs;
+    if (multithread && !order.empty()) {
+      chunked_qvs.push_back(order.front());
+      planner->setPartitioningQueryVertices(&chunked_qvs);
+    }
     ExecutionPlan* plan = nullptr;
     switch (query_context_->query_config.compression_strategy) {
     case CompressionStrategy::Static: {
