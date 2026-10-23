@@ -64,6 +64,13 @@ std::pair<QueryVertexID, std::vector<QueryVertexID>> VertexRelationship::findReu
   for (QueryVertexID set_vertex : set_vertices) {
     if (exclude_mask >> set_vertex & 1) continue;
     if (q->getVertexLabel(set_vertex) != q->getVertexLabel(target)) continue;
+    // A reused set has been intersected with the candidate set of set_vertex, not with that of target.
+    // Under a candidate filter (cfl/gql/...: every mode except online, which sets candidate_set_intersection = 3)
+    // the candidates of target may contain data vertices that the candidates of set_vertex do not, so the reused set
+    // silently drops matches. It is only safe when the two query vertices are twins (same label, same
+    // neighbourhood): swapping them is an automorphism, so every match of target is a match of set_vertex and survives
+    // any sound filter of set_vertex.
+    if (FLAGS_candidate_set_intersection != 3 && !qv_equivalence_->isEquivalent(set_vertex, target)) continue;
     bool is_reusable = true;
     DLOG(INFO) << "check neighbor of " << target << " and " << set_vertex;
     // neighborhood equivalence
