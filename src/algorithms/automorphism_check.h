@@ -36,7 +36,7 @@ class AutomorphismCheck {
         return nbrs1.first[i] > nbrs2.first[i];
       }
     }
-    return true;
+    return false;  // equal neighbors: std::sort needs a strict weak ordering
   }
 
   PartialOrder orderVertices(const std::vector<std::pair<QueryVertexID, QueryVertexID>>& sorted_conds);
