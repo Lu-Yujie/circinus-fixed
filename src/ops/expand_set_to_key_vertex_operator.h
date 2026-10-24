@@ -311,13 +311,15 @@ class ExpandSetToKeyVertexOperator : public ExpandVertexOperator {
 
     auto& parent_match_idx = ctx->getParentMatchIdx();
     auto& parent_matches = *ctx->getParentMatches();
-    auto candidate_end = ctx->getCandidateSet()->end();
+    // without a candidate filter (online) there is no candidate set: candidates == nullptr
+    auto candidates = ctx->getCandidateSet();
+    CandidateSetView::ConstIterator candidate_end = candidates == nullptr ? nullptr : candidates->end();
     auto graph = ctx->getDataGraph<G>();
     while (parent_match_idx < parent_matches.size()) {
       // find extensions and enumerate
       auto vid = parent_matches[parent_match_idx++];
       auto out_neighbors = graph->getOutNeighborsWithHint(vid, target_label_, min_parent_idx);
-      auto begin = ctx->getCandidateSet()->begin();
+      CandidateSetView::ConstIterator begin = candidates == nullptr ? nullptr : candidates->begin();
       if (std::is_same_v<decltype(out_neighbors), VertexSetView>) {
         auto& ranges = out_neighbors.getRanges();
         for (uint32_t range_i = 0; range_i < ranges.size(); ++range_i) {
