@@ -45,8 +45,9 @@ void CandidateResult::merge(std::unique_ptr<TaskBase>& task) {
   std::vector<uint32_t> order(candidates_[task_id].size());
   std::iota(order.begin(), order.end(), 0);
   sort(order.begin(), order.end(), [&](uint32_t l, uint32_t r) {
+    // empty shards first; "true" whenever one of the two was empty was not a strict weak ordering
     if (candidates_[task_id][l].empty() || candidates_[task_id][r].empty()) {
-      return true;
+      return candidates_[task_id][l].empty() && !candidates_[task_id][r].empty();
     }
     return candidates_[task_id][l].front() < candidates_[task_id][r].front();
   });

@@ -54,7 +54,7 @@ class CandidateResult : public Result {
         std::vector<uint32_t> order(candidates_[i].size());
         std::iota(order.begin(), order.end(), 0);
         sort(order.begin(), order.end(),
-             [&](uint32_t l, uint32_t r) { return candidates_[i][l].front() <= candidates_[i][r].front(); });
+             [&](uint32_t l, uint32_t r) { return candidates_[i][l].front() < candidates_[i][r].front(); });
         for (auto j : order) {
           auto& shard = candidates_[i][j];
           res[i].addRange(shard.data(), shard.data() + shard.size());
