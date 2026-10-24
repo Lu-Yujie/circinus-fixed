@@ -211,15 +211,16 @@ class EnumerateKeyOperator : public TraverseOperator {
         if (conds != po.constraints.end()) {
           for (uint32_t ki = 0; ki < n_keys; ++ki) {
             auto k = keys_to_enumerate_[ki];
-            if (conds->second.second.count(k)) {  // smaller than smallest k
+            if (conds->second.second.count(k)) {  // set smaller than k
               po_constraint_existing_set_indices_[ki].emplace_back(true, query_vertex_indices_.at(v.first));
               LOG(INFO) << "enumerate_key " << ki << ':' << k << " is greater than set vertex " << v.first << " index "
                         << query_vertex_indices_.at(v.first);
             }
           }
           for (uint32_t ki = 0; ki < n_keys; ++ki) {
-            auto k = keys_to_enumerate_[n_keys - ki - 1];
-            if (conds->second.first.count(k)) {  // larger than largest k
+            // the condition is checked when the ki-th key is set (expandInner), so it must name the ki-th key
+            auto k = keys_to_enumerate_[ki];
+            if (conds->second.first.count(k)) {  // set larger than k
               po_constraint_existing_set_indices_[ki].emplace_back(false, query_vertex_indices_.at(v.first));
               LOG(INFO) << "enumerate_key " << ki << ':' << k << " is smaller than set vertex " << v.first << " index "
                         << query_vertex_indices_.at(v.first);
