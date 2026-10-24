@@ -22,7 +22,8 @@ cases; `python3 fixes/brute_force.py data.graph query.graph [--aut]` counts thei
 `yeast.graph` and a query into a case directory as `data.graph` and `query.graph`.
 
 "Before" is `1a2f0c1` with only the GCC 12 build fix (and METIS built with 32-bit `idx_t`, see fix 4); "after" is
-this branch. P is the number of partitions, F the filter.
+this branch. For rows 23 and 24, "before" is this branch without that fix; the code is the same in `1a2f0c1`, where
+symmetry breaking also has the defects of rows 14 and 21. P is the number of partitions, F the filter.
 
 | # | fix | reproduction (P, F, flags) | before | after |
 |---|---|---|---|---|
@@ -58,6 +59,10 @@ this branch. P is the number of partitions, F the filter.
 | 20 | Multi-threaded online: a start vertex without candidates aborted | `c9_star5_tiny`, 3, online, `--num_cores 2` | `Check failed: false CandidateSetView with multiple ranges unsupported` | 0 |
 | 21 | `--break_symmetry=true`: off-by-one in `PartialOrder::orderVertices`, the query never replied | yeast `query_sparse_16_193`, 3, cfl, `--pqv cc --break_symmetry=true` | no reply (server: `phmap at(): lookup non-existent key`) | 15177 |
 | 22 | An exception while planning a query left the client waiting forever | (the case of row 21 without its fix) | no reply | error reply |
+| 23 | `--break_symmetry=true`: when the partial order reordered the keys that an operator enumerates, the keys were written to each other's query vertices | `c10_wheel4_v55`, 5, cfl or gql, `--break_symmetry=true` | 0 | 1 |
+| | | yeast `query_dense_24_173`, 3, gql, `--break_symmetry=true` | 124550 | 199280 |
+| 24 | `--break_symmetry=true`: a condition "set larger than key" was checked against another of the keys enumerated together | `c11_arms7_self`, 1, online, `--break_symmetry=true` | 0 | 1 |
+| | | `c11_arms7_self`, 2, 3 or 5, online, `--break_symmetry=true` | 2 | 1 |
 
 ## Result line
 
