@@ -103,6 +103,9 @@ class EnumerateKeyOperator : public TraverseOperator {
   // i : the indices of existing sets that is constrained by the i-th key to enumerate. flag is true when existing set
   // is smaller than key
   std::vector<std::vector<std::pair<bool, uint32_t>>> po_constraint_existing_set_indices_;
+  // i: the output key index of the i-th key to enumerate. setPartialOrder() may reorder keys_to_enumerate_, so the
+  // output index of a key cannot be derived from its enumeration depth.
+  std::vector<uint32_t> key_output_indices_;
 
   unordered_map<QueryVertexID, uint32_t> query_vertex_indices_;
 
@@ -191,6 +194,7 @@ class EnumerateKeyOperator : public TraverseOperator {
         }
         enumerated_key_pruning_indices_.swap(enumerated_key_pruning_indices_by_order);
         keys_to_enumerate_.swap(enforce_plan.order);
+        for (uint32_t i = 0; i < n_keys; ++i) key_output_indices_[i] = query_vertex_indices_.at(keys_to_enumerate_[i]);
         std::stringstream ss;
         for (uint32_t i = 0; i < n_keys; ++i) {
           for (auto index : po_constraint_adj_[i]) {
@@ -261,6 +265,7 @@ EnumerateKeyOperator<G, intersect_candidates>::EnumerateKeyOperator(
   for (auto v : keys_to_enumerate_) {
     DCHECK(input_query_vertex_indices.count(v));
     enumerate_key_old_indices_[v] = input_query_vertex_indices.at(v);
+    key_output_indices_.push_back(query_vertex_indices_.at(v));
   }
 }
 
@@ -305,7 +310,7 @@ uint32_t EnumerateKeyOperator<G, intersect_candidates>::expandInner(uint32_t bat
           bool skip = false;
           for (uint32_t key_i = 0; key_i < enumerate_key_size; ++key_i) {
             auto key = ctx->currentKeyToEnumerate(key_i);
-            output.UpdateKey(input.getNumKeys() + key_i, key);
+            output.UpdateKey(key_output_indices_[key_i], key);
             // partial order
             if (!po_constraint_existing_set_indices_.empty() && !po_constraint_existing_set_indices_[key_i].empty()) {
               for (auto cond : po_constraint_existing_set_indices_[key_i]) {

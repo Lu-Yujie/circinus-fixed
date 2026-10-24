@@ -125,6 +125,9 @@ class EnumerateKeyExpandToSetOperator : public ExpandVertexOperator {
   // i : the indices of existing sets that is constrained by the i-th key to enumerate. flag is true when existing set
   // is smaller than key
   std::vector<std::vector<std::pair<bool, uint32_t>>> po_constraint_existing_set_indices_;
+  // i: the output key index of the i-th key to enumerate. setPartialOrder() may reorder keys_to_enumerate_, so the
+  // output index of a key cannot be derived from its enumeration depth.
+  std::vector<uint32_t> key_output_indices_;
 
   std::vector<std::pair<uint32_t, uint32_t>> uncovered_parent_indices_;  // parent key index, parent index
   bool target_set_exists_ = false;
@@ -210,6 +213,7 @@ class EnumerateKeyExpandToSetOperator : public ExpandVertexOperator {
         }
         enumerated_key_pruning_indices_.swap(enumerated_key_pruning_indices_by_order);
         keys_to_enumerate_.swap(enforce_plan.order);
+        for (uint32_t i = 0; i < n_keys; ++i) key_output_indices_[i] = query_vertex_indices_.at(keys_to_enumerate_[i]);
         std::stringstream ss;
         for (uint32_t i = 0; i < n_keys; ++i) {
           for (auto index : po_constraint_adj_[i]) {
@@ -328,6 +332,7 @@ EnumerateKeyExpandToSetOperator<G, intersect_candidates>::EnumerateKeyExpandToSe
     DCHECK(input_query_vertex_indices.count(v));
     enumerate_key_old_indices_[v] = input_query_vertex_indices.at(v);
     CHECK_EQ(query_vertex_indices_[v], n_input_keys) << v;  // assume contiguous indices after existing keys
+    key_output_indices_.push_back(n_input_keys);
     ++n_input_keys;
   }
   // assume target is the last set in output
@@ -470,7 +475,7 @@ uint32_t EnumerateKeyExpandToSetOperator<G, intersect_candidates>::expandInner(u
           bool skip = false;
           for (uint32_t key_i = 0; key_i < enumerate_key_size; ++key_i) {
             auto key = ctx->currentKeyToEnumerate(key_i);
-            output.UpdateKey(input.getNumKeys() + key_i, key);
+            output.UpdateKey(key_output_indices_[key_i], key);
             // partial order
             if (!po_constraint_existing_set_indices_.empty() && !po_constraint_existing_set_indices_[key_i].empty()) {
               for (auto cond : po_constraint_existing_set_indices_[key_i]) {
