@@ -83,7 +83,7 @@ PartialOrder::EnforcePlan PartialOrder::orderVertices(const std::vector<QueryVer
   plan.order.resize(n);
   plan.constraints_adj.resize(n);
   for (uint32_t i = 0; i < n; ++i) {
-    if (new_order[i] > n) {
+    if (new_order[i] >= n) {  // unconstrained vertices were numbered from n; ">" left the first one at n
       new_order[i] -= n - n_constrained;
     }
     plan.order[new_order[i]] = tmp_order[i];
