@@ -96,10 +96,15 @@ void CircinusServer::Serve(bool listen) {
         LOG(FATAL) << "Unknown event type " << event;
       }
     } catch (const std::exception& e) {
-      if (event.client_addr.empty()) {
-        LOG(WARNING) << e.what();
-      } else {
+      if (!event.client_addr.empty()) {
         replyToClient(event.client_addr, std::string(e.what()));
+      } else if (event.type == Event::CandidatePhase) {
+        // The planning of a query failed. The event comes from the executors and carries no client address, so
+        // reply to the query's client instead of leaving it waiting forever.
+        LOG(WARNING) << e.what();
+        finishQuery(event.query_id, nullptr, std::string("error: ") + e.what());
+      } else {
+        LOG(WARNING) << e.what();
       }
     }
   }
