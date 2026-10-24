@@ -15,8 +15,8 @@ The original README follows below; the two places where this branch behaves diff
 
 | kind | problems (details in `FIXES.md`) |
 |---|---|
-| wrong counts | twin-set shortcuts that ignore same-label keys to be excluded (undercount); the 2–3-set inclusion–exclusion and twin shortcuts assuming that twin sets are identical (overcount); **set reuse** in three forms: a reused set filtered by another vertex's candidates under cfl / gql (undercount), a key taking values from a set that misses same-label keys added later (overcount; yeast `query_dense_24_61`: 72,304,239 instead of 53,111,964), and a reused start-vertex set that holds one chunk with several threads (undercount); `--break_symmetry=true` (constraints from generators only, constrained counts divided by k!, keys stored under each other's query vertices after reordering, conditions checked against the wrong key); 64-bit counts that wrap or stop at 2^64 − 1 |
-| aborts and crashes | queries with ≥ 32 vertices; a query vertex without candidates; `--partition 0` or `1`; METIS built with 64-bit `idx_t` (as in `cmake/dep.cmake`); a reply race under cfl / gql; the time limit with `--upg=false`; an invalid sort comparator |
+| wrong counts | twin-set shortcuts that ignore same-label keys to be excluded (undercount); the 2–3-set inclusion–exclusion and twin shortcuts assuming that twin sets are identical (overcount); **set reuse** in three forms: a reused set filtered by another vertex's candidates under cfl / gql (undercount), a key taking values from a set that misses same-label keys added later (overcount; yeast `query_dense_24_61`: 72,304,239 instead of 53,111,964), and a reused start-vertex set that holds one chunk with several threads (undercount); `--break_symmetry=true` (constraints from generators only, constrained counts divided by k!, keys stored under each other's query vertices after reordering, conditions checked against the wrong key, a vertex sort that read outside its vector on queries with more than 16 vertices); 64-bit counts that wrap or stop at 2^64 − 1 |
+| aborts and crashes | queries with ≥ 32 vertices; a query vertex without candidates; `--partition 0` or `1`; METIS built with 64-bit `idx_t` (as in `cmake/dep.cmake`); a reply race under cfl / gql; the time limit with `--upg=false`; sort comparators that are not strict weak orderings (`GraphToBinary --sort_by_degree=false`; with `--break_symmetry=true`, heap corruption on queries with more than 16 vertices); the online mode in Debug builds |
 | hangs | `reserve(0)` on a non-empty parallel-hashmap set; the time limit during a cfl / gql filter; an exception while planning |
 | build and runtime | GCC ≥ 12; building without network access; thread pinning that ignored the process's CPU set |
 
@@ -51,10 +51,15 @@ equals the target vertex's candidate set; without set reuse the original code co
   queries have automorphisms.
 - All 1,800 FaSTest yeast queries in online, cfl and gql.
 - Multi-threaded runs (4 threads, 13 configurations).
+- A stress corpus for symmetry breaking: 260 cases with many twin vertices (stars, complete bipartite graphs, wheels
+  with pendant twins, random queries with groups of twins), automorphism groups of up to 30! elements, and counts
+  just below and above 2^64 and 2^128 and around 10^40; launched directly and through Python's `subprocess`.
+- Builds with AddressSanitizer and UndefinedBehaviorSanitizer on the stress corpus and samples of the other corpora.
 - Reference counts: FaSTest's published counts and the agreement of other subgraph matchers for yeast; independent
   exact counters (and plain backtracking where small) for the random cases.
-- In about 440,000 runs there was no wrong count and no crash. Runs that reached the time limit are not counted as
-  errors.
+- In about 440,000 runs before rows 25–27 of `FIXES.md`, and in about 550,000 runs of the same sweeps with the
+  additions above after them, there was no wrong count and no crash (and no sanitizer report). Runs that reached the
+  time limit are not counted as errors.
 
 ## Status and license
 

@@ -22,7 +22,7 @@ cases; `python3 fixes/brute_force.py data.graph query.graph [--aut]` counts thei
 `yeast.graph` and a query into a case directory as `data.graph` and `query.graph`.
 
 "Before" is `1a2f0c1` with only the GCC 12 build fix (and METIS built with 32-bit `idx_t`, see fix 4); "after" is
-this branch. For rows 23 and 24, "before" is this branch without that fix; the code is the same in `1a2f0c1`, where
+this branch. For rows 23 to 27, "before" is this branch without that fix; the code is the same in `1a2f0c1`, where
 symmetry breaking also has the defects of rows 14 and 21. P is the number of partitions, F the filter.
 
 | # | fix | reproduction (P, F, flags) | before | after |
@@ -63,6 +63,27 @@ symmetry breaking also has the defects of rows 14 and 21. P is the number of par
 | | | yeast `query_dense_24_173`, 3, gql, `--break_symmetry=true` | 124550 | 199280 |
 | 24 | `--break_symmetry=true`: a condition "set larger than key" was checked against another of the keys enumerated together | `c11_arms7_self`, 1, online, `--break_symmetry=true` | 0 | 1 |
 | | | `c11_arms7_self`, 2, 3 or 5, online, `--break_symmetry=true` | 2 | 1 |
+| 25 | `--break_symmetry=true`: the automorphism check sorted the query vertices with a comparator that is not a strict weak ordering (true for two vertices with equal neighbour lists); on queries with more than 16 vertices `std::sort` read and wrote outside its vector: wrong conditions, wrong counts, heap corruption | `c12_star20_self`, 1, 2, 3 or 5, online, `--break_symmetry=true` | 20 | 1 |
+| | | `c13_star16_labels_self`, 2 or 3, online, `--break_symmetry=true` | SIGSEGV (with 1 partition it happened to print 1) | 1 |
+| | | `python3 fixes/gen_hubs.py 10000000000000000000000000000000000000001 17 DIR`, 3, online, `--break_symmetry=true` | SIGSEGV; in other environments `malloc(): invalid size (unsorted)` or, by chance, the right count | 10000000000000000000000000000000000000001 |
+| 26 | The two other comparators that were not strict weak orderings (merging candidate shards; a sort after `CHECK(false)`) | not reached by any input; see "Comparator audit" | | |
+| 27 | Debug builds crashed in the online mode: members of the missing candidate set were called (undefined behaviour in every build) | `c8_cycle5_tiny`, 3, online, Debug build (`-DCMAKE_BUILD_TYPE=Debug`) | SIGSEGV | 20 |
+
+`c12_star20_self` is a star with 20 leaves of one label, matched against itself: 20! embeddings and 20! automorphisms
+(too many for `brute_force.py`), so the count with `--break_symmetry=true` is 1. `c13_star16_labels_self` is a star
+with 16 leaves of 16 labels, matched against itself (one embedding, no automorphism). `fixes/gen_hubs.py COUNT LABELS
+DIR` writes a star query with LABELS leaves of distinct labels and a data graph of several hubs with exactly COUNT
+embeddings. The outcome of row 25 before the fix depends on the memory next to the sorted vector, so it can change
+with the environment and the way the program is started; AddressSanitizer reports the out-of-range read in every
+case.
+
+## Comparator audit
+
+Every comparator passed to `std::sort`, `std::lower_bound`, `std::upper_bound`, `std::priority_queue`, `std::map` and
+`std::set` in `src/` and `tests/` was checked for being a strict weak ordering (no element compares less than itself,
+never both a < b and b < a). Three were not: the one of row 25 (`src/algorithms/automorphism_check.h`) and the two of
+row 26 (`src/exec/result.cc`, `src/exec/result.h`). `GraphToBinary`'s vertex sort was fixed earlier (row 17). All
+the others compare one key with `<` or `>` (sizes, degrees, ids, labels, partitions, task ids, finite scores).
 
 ## Result line
 
@@ -77,3 +98,9 @@ count 0 with status `complete`.
   weight from `getBestObjective()`, while `WeightedBnB` keeps the best 3 covers and does not prune on the incumbent
   (its `best_cover_weight_` is never lowered). This affects planning time only.
 - The other unit tests that read datasets from `/data/share/...` need those files.
+- With `--break_symmetry=true`, a group of k same-label sets whose conditions form a chain is counted by enumerating
+  increasing tuples, which also visits every increasing prefix: about 2^k steps even when the count is 1. A star with
+  30 leaves of one label matched against itself takes about 35 s (25 leaves: about 1 s).
+- Debug builds (assertions on) stop at `DCHECK(start != nullptr)` in `VertexSetView::addRange` when a partition has no
+  candidate for the start vertex (seen with gql, a static cover and 5 partitions); release builds skip the empty
+  range, as intended.
