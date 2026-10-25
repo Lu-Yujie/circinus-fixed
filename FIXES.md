@@ -22,7 +22,7 @@ cases; `python3 fixes/brute_force.py data.graph query.graph [--aut]` counts thei
 `yeast.graph` and a query into a case directory as `data.graph` and `query.graph`.
 
 "Before" is `1a2f0c1` with only the GCC 12 build fix (and METIS built with 32-bit `idx_t`, see fix 4); "after" is
-this branch. For rows 23 to 27, "before" is this branch without that fix; the code is the same in `1a2f0c1`, where
+this branch. For rows 23 to 28, "before" is this branch without that fix; the code is the same in `1a2f0c1`, where
 symmetry breaking also has the defects of rows 14 and 21. P is the number of partitions, F the filter.
 
 | # | fix | reproduction (P, F, flags) | before | after |
@@ -68,6 +68,7 @@ symmetry breaking also has the defects of rows 14 and 21. P is the number of par
 | | | `python3 fixes/gen_hubs.py 10000000000000000000000000000000000000001 17 DIR`, 3, online, `--break_symmetry=true` | SIGSEGV; in other environments `malloc(): invalid size (unsorted)` or, by chance, the right count | 10000000000000000000000000000000000000001 |
 | 26 | The two other comparators that were not strict weak orderings (merging candidate shards; a sort after `CHECK(false)`) | not reached by any input; see "Comparator audit" | | |
 | 27 | Debug builds crashed in the online mode: members of the missing candidate set were called (undefined behaviour in every build) | `c8_cycle5_tiny`, 3, online, Debug build (`-DCMAKE_BUILD_TYPE=Debug`) | SIGSEGV | 20 |
+| 28 | Use-after-free under cfl / gql: the candidate-pruning setup read the first filter operator after queueing its tasks, while the other threads could already have ended the phase and destroyed the operators (the window of row 18, one step later) | a build with AddressSanitizer (`-fsanitize=address`), cfl or gql, many runs at once (64 processes) | `heap-use-after-free` in `CandidatePruningPlanDriver::init` (456 of about 36,000 runs; never observed without the sanitizer) | none |
 
 `c12_star20_self` is a star with 20 leaves of one label, matched against itself: 20! embeddings and 20! automorphisms
 (too many for `brute_force.py`), so the count with `--break_symmetry=true` is 1. `c13_star16_labels_self` is a star
