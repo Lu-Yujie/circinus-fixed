@@ -76,16 +76,21 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
     ctx.second = Result::newCandidateResult(scans.size());
     result_ = (CandidateResult*)ctx.second.get();
     finish_event_->data = result_;  // before the first task is queued (see phase 3)
+    // Queue the tasks only after the operators and counters are complete (see phase 3).
+    std::vector<ScanTask*> tasks;
     for (uint32_t task_id = 0; task_id < scans.size(); ++task_id) {
       auto& scan = scans[task_id];
       CHECK(scan != nullptr) << task_id;
       task_counters_[task_id] = scan->getParallelism();
       for (uint32_t i = 0; i < scan->getParallelism(); ++i) {
-        task_queue.putTask(new ScanTask(qid, task_id, query_ctx->stop_time, i, scan.get(), query_ctx->data_graph,
-                                        query_ctx->query_config.seed));
+        tasks.push_back(new ScanTask(qid, task_id, query_ctx->stop_time, i, scan.get(), query_ctx->data_graph,
+                                     query_ctx->query_config.seed));
       }
       DLOG(INFO) << "Query " << qid << " Task " << task_id << " " << scan->getParallelism() << " shard(s)";
       operators_.push_back(std::move(scan));
+    }
+    for (auto task : tasks) {
+      task_queue.putTask(task);
     }
   } else if (plan_->getPhase() == 3) {
     LOG(INFO) << "Candidate pruning phase 3";
@@ -108,9 +113,16 @@ void CandidatePruningPlanDriver::init(QueryId qid, QueryContext* query_ctx, Exec
     filter->setParallelism(getFilterParallelism(input_size));
     // filter->setParallelism((input_size + FLAGS_batch_size - 1) / FLAGS_batch_size);
     task_counters_[n_finished_tasks_] = filter->getParallelism();
+    // Create all tasks before queueing the first one. Once the last task is queued, the executor and finish threads
+    // can run the remaining filters and end the phase, and reset() then destroys the operators (`filter` included):
+    // nothing may read `filter` or this driver's members after the first putTask.
+    std::vector<NeighborhoodFilterTask*> tasks;
     for (uint32_t i = 0; i < filter->getParallelism(); ++i) {
-      task_queue.putTask(new NeighborhoodFilterTask(qid, n_finished_tasks_, query_ctx->stop_time, i, filter,
-                                                    query_ctx->data_graph, result_->getMergedCandidates()));
+      tasks.push_back(new NeighborhoodFilterTask(qid, n_finished_tasks_, query_ctx->stop_time, i, filter,
+                                                 query_ctx->data_graph, result_->getMergedCandidates()));
+    }
+    for (auto task : tasks) {
+      task_queue.putTask(task);
     }
   } else {
     finish_event_->data = result_;
